@@ -312,12 +312,107 @@ contract BurnableToken is BasicToken {
 }
 
 
-contract BurrowCoin is MintableToken, BurnableToken {
-  string public constant name = "BurrowCoin"; // solium-disable-line uppercase
-  string public constant symbol = "BURR"; // solium-disable-line uppercase
-  uint8 public constant decimals = 18; // solium-disable-line uppercase
+contract Mutex {
 
-  uint256 public constant INITIAL_SUPPLY = 100 * (10 ** uint256(decimals));
+  bool private mutex_lock = false;
+
+  modifier checkMutex() {
+    require(!mutex_lock);
+    mutex_lock = true;
+    _;
+    mutex_lock = false;
+  }
+
+}
+
+
+contract DonatableToken is MintableToken, Mutex {
+  uint256 public TotalDonationAmount;
+  uint256 public TotalDonationCount;
+  uint256 public DonationRewardRate = 10;
+  bool public Donatable = true;
+  
+  struct Donation {
+    uint64 time; 
+    address donator;
+    string name;
+    uint256 amount;
+  }
+  
+  Donation[] public DonationList;
+
+  event DonationEvent(
+    address indexed donator,
+    uint256 indexed donation_amount,
+    uint256 indexed donation_reward_rate,
+    uint256 donation_reward_amount
+  );
+  
+  modifier moreThan(uint256 value){
+    require(msg.value > value);
+    _;
+  }
+  
+  // function sort(uint[] array) view returns (uint[]) {
+  //   for (uint i = 1; i < array.length; i++) {
+  //     var t = array[i];
+  //     var j = i;
+  //     while(j > 0 && array[j - 1] > t) {
+  //       array[j] = array[j - 1];
+  //       j--;
+  //     }
+  //     array[j] = t;
+  //   }
+  //   return array;
+  // }
+
+  modifier isDonatable { 
+    require(Donatable);
+    _; 
+  }
+
+  function finishDonation() onlyOwner isDonatable public returns (bool) {
+    Donatable = false;
+    return true;
+  }
+  
+  function decreaseDonationRewardRate () onlyOwner isDonatable checkMutex public returns(uint256 rate) {
+    require(DonationRewardRate > rate);
+    DonationRewardRate = rate;
+  }
+
+  function Donate (string name) public payable moreThan(0) isDonatable canMint checkMutex returns(bool res) {
+    uint256 reward_amount = DonationRewardRate * msg.value;
+    res = mint(msg.sender, reward_amount);
+    Donation memory donation = Donation({
+      time: uint64(now),
+      donator: msg.sender,
+      name: name,
+      amount: msg.value
+    });
+    DonationList.push(donation);
+    TotalDonationAmount = TotalDonationAmount.add(msg.value);
+    TotalDonationCount++;
+    DonationEvent(msg.sender, msg.value, DonationRewardRate, reward_amount);
+    return res;
+  }
+  
+  function ClaimDonation() onlyOwner checkMutex public payable {
+    require(TotalDonationAmount > 0);
+    require(owner.send(TotalDonationAmount));
+    TotalDonationAmount = 0;
+  }
+  
+
+}
+
+
+contract BurrowCoin is DonatableToken, BurnableToken {
+  string public constant name = "BurrowCoin";
+  string public constant symbol = "BURR";
+  uint8 public constant decimals = 18;
+
+  uint256 public constant INITIAL_SUPPLY = 1000 * (10 ** uint256(decimals));
 
   // count of Burrow
   uint256 public BurrowCount;
@@ -325,28 +420,20 @@ contract BurrowCoin is MintableToken, BurnableToken {
   // total amount of burrowed ETH
   uint256 public TotalEthAmount;
 
-
-  struct FileDetails {
-    uint timestamp;
-    address owner;
-    string uri;
-  }
-  mapping (string => FileDetails) public files;
-  
-  function upload_file(string hash, string uri) public {
-    require(files[hash].timestamp != 0);
-    files[hash] = FileDetails(block.timestamp, msg.sender, uri);
+  struct Burrow {
+    uint time; // time of start burrow
+    uint burrowDays; // 
+    address burrower;  // address of owner 
+    uint burrowAmount;
+    bool refunded;
   }
 
   function BurrowCoin() public {
     mint(msg.sender, INITIAL_SUPPLY);
   }
 
-  struct Burrow {
-    uint time; // time of start burrow
-    uint burrowDays; // 
-    address burrower;  // address of owner 
-  }
+  mapping (address => Burrow[]) BurrowList;
+
 
   event BurrowEvent(
     address indexed burrower,
@@ -354,17 +441,17 @@ contract BurrowCoin is MintableToken, BurnableToken {
     bool indexed unburrow
   );
 
-  function burrowEth() payable {
-    // logging(mutexFlag);
+  function burrowEth(uint burrowDays) public payable moreThan(0.1 ether) canMint checkMutex {
     TotalEthAmount = TotalEthAmount.add(msg.value);
     BurrowCount = BurrowCount.add(1);
-    mint(msg.sender, TotalEthAmount);
+    mint(msg.sender, msg.value/2);
     BurrowEvent(msg.sender, msg.value, false);
-    // logging(mutexFlag);
   }
 
-  function() payable {
-      burrowEth();
+  function() public payable {
+      burrowEth(30);
   }
+
+
 
 }
