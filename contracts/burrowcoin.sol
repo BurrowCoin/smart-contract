@@ -262,7 +262,7 @@ contract MintableToken is StandardToken, Ownable {
   }
 
   /**
-   * @dev Function to mint tokens
+   * @dev Function to mint tokens, only internal for Burrow
    * @param _to The address that will receive the minted tokens.
    * @param _amount The amount of tokens to mint.
    * @return A boolean that indicates if the operation was successful.
@@ -412,13 +412,16 @@ contract BurrowCoin is DonatableToken, BurnableToken {
   string public constant symbol = "BURR";
   uint8 public constant decimals = 18;
 
-  uint256 public constant INITIAL_SUPPLY = 1000 * (10 ** uint256(decimals));
+  // uint256 public constant INITIAL_SUPPLY = 1000 * (10 ** uint256(decimals));
 
   // count of Burrow
   uint256 public BurrowCount;
   
   // total amount of burrowed ETH
-  uint256 public TotalEthAmount;
+  uint256 public TotalBurrowedEth;
+
+  uint public BurrowCoinRate = 50;  // BurrowCoinRate/100
+
 
   struct Burrow {
     uint time; // time of start burrow
@@ -429,11 +432,14 @@ contract BurrowCoin is DonatableToken, BurnableToken {
   }
 
   function BurrowCoin() public {
-    mint(msg.sender, INITIAL_SUPPLY);
+    // mint(msg.sender, INITIAL_SUPPLY);
   }
 
   mapping (address => Burrow[]) BurrowList;
 
+  function ApplyBurrowRate(uint256 value) public view returns (uint256 burrowReturn) {
+    return value.mul(BurrowCoinRate).div(100);
+  }
 
   event BurrowEvent(
     address indexed burrower,
@@ -442,9 +448,9 @@ contract BurrowCoin is DonatableToken, BurnableToken {
   );
 
   function burrowEth(uint burrowDays) public payable moreThan(0.1 ether) canMint checkMutex {
-    TotalEthAmount = TotalEthAmount.add(msg.value);
+    TotalBurrowedEth = TotalBurrowedEth.add(msg.value);
     BurrowCount = BurrowCount.add(1);
-    mint(msg.sender, msg.value/2);
+    mint(msg.sender, msg.value);
     BurrowEvent(msg.sender, msg.value, false);
   }
 
